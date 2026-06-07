@@ -38,9 +38,9 @@ ROWS         = 6        # cell rows
 COLS         = 8        # cell columns
 CELL_SPACING = 0.003    # metres between cell centres (3 mm)
 
-# -- Cell properties (cylindrical lithium-ion, ~4680 class) ------------------
+# -- Cell properties (cylindrical lithium-ion cell) ---------------------------
 CAPACITY_AH  = 5.0      # Ah
-R_INTERNAL   = 0.010    # Ohms -- internal resistance per cell
+R_INTERNAL   = 0.010    # Ohm -- internal resistance per cell
 THERMAL_MASS = 50.0     # J/°C -- heat capacity per cell
 
 # -- Thermal properties -------------------------------------------------------
@@ -86,7 +86,7 @@ def run_simulation(c_rate, t_amb, cooling_coeff, cooling_on, steps, dt):
     history = np.zeros((steps, ROWS, COLS))
 
     for step in range(steps):
-        # State-of-charge falls linearly from 1 to 0
+        # State-of-charge falls linearly from 1 -> 0
         soc   = 1.0 - step / steps
         R_eff = R_INTERNAL * (1.0 + 0.4 * (1.0 - soc))
 
@@ -113,7 +113,7 @@ def run_simulation(c_rate, t_amb, cooling_coeff, cooling_on, steps, dt):
                 max_cool = np.maximum(0.0, T[r, :] - t_amb)
                 dT[r, :] -= np.minimum(raw_cool, max_cool)
 
-        # 4. Update -- floor at ambient
+        # 4. Update -- floor at ambient (physically: cooling never freezes cells)
         T = np.maximum(t_amb, T + dT)
         history[step] = T.copy()
 
@@ -182,13 +182,11 @@ def animate_and_save(history, params):
 
     title = ax1.set_title("", color="white", fontsize=11, pad=10)
 
-    # Cooling channel markers
     if params['cooling_on']:
         for r in [0, ROWS - 1]:
             ax1.annotate("[COOL]", xy=(-1.2, r), xycoords="data",
                          color="#4fb8c0", fontsize=8, va="center")
 
-    # Author watermark
     fig.text(0.99, 0.01, "Evan McIntyre -- ThermoCell v1.0",
              ha="right", va="bottom", fontsize=7, color="#444444",
              fontstyle="italic")
@@ -209,8 +207,8 @@ def animate_and_save(history, params):
     ax2.axhline(TEMP_CRITICAL, color="#e74c3c", lw=1, ls="--",
                 label=f"Critical ({TEMP_CRITICAL}°C)")
 
-    ax2.set_xlabel("Time (s)",         color="#aaaaaa", fontsize=9)
-    ax2.set_ylabel("Temperature (°C)", color="#aaaaaa", fontsize=9)
+    ax2.set_xlabel("Time (s)",          color="#aaaaaa", fontsize=9)
+    ax2.set_ylabel("Temperature (°C)",  color="#aaaaaa", fontsize=9)
     ax2.set_title("Temperature over discharge", color="white", fontsize=11, pad=10)
     ax2.tick_params(colors="#aaaaaa")
     ax2.legend(fontsize=8, facecolor="#1a1a1a", edgecolor="#444444",
