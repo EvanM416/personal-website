@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThermoCell — Battery Thermal Simulation</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #070a0f;
+    --panel: #0d1117;
+    --border: #1c2333;
+    --accent: #e8214a;
+    --accent2: #00d4ff;
+    --warn: #f5a623;
+    --safe: #00e676;
+    --text: #c9d1d9;
+    --muted: #4a5568;
+    --cell-cold: #0a3d6b;
+    --cell-warm: #e8214a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    font-weight: 300;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,0.015) 2px, rgba(0,212,255,0.015) 4px);
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 200px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent2), transparent);
+  }
+
+  .logo {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: #fff;
+  }
+
+  .logo span { color: var(--accent2); }
+
+  .author-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+  }
+
+  .author-name {
+    font-family: 'Barlow', sans-serif;
+    font-weight: 500;
+    font-size: 13px;
+    color: #ffffff;
+    letter-spacing: 1px;
+  }
+
+  .author-meta {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: #8b9ab0;
+    letter-spacing: 1px;
+  }
+
+  #status-bar {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    padding: 8px 32px;
+    background: rgba(0,212,255,0.04);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 32px;
+    align-items: center;
+  }
+
+  .status-item { display: flex; gap: 8px; align-items: center; }
+  .status-label { color: #8b9ab0; }
+  .status-val { color: #ffffff; font-weight: 500; }
+
+  #thermal-status {
+    margin-left: auto;
+    padding: 3px 12px;
+    border-radius: 2px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    font-weight: 600;
+    transition: all 0.3s;
+  }
+
+  .status-safe { background: rgba(0,230,118,0.15); color: var(--safe); border: 1px solid rgba(0,230,118,0.3); }
+  .status-warn { background: rgba(245,166,35,0.15); color: var(--warn); border: 1px solid rgba(245,166,35,0.3); }
+  .status-critical { background: rgba(232,33,74,0.2); color: var(--accent); border: 1px solid rgba(232,33,74,0.4); animation: pulse 0.8s infinite; }
+
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+
+  .main {
+    display: grid;
+    grid-template-columns: 280px 1fr 260px;
+    gap: 0;
+    height: calc(100vh - 89px);
+  }
+
+  .panel {
+    border-right: 1px solid var(--border);
+    padding: 20px;
+    overflow-y: auto;
+  }
+
+  .panel:last-child { border-right: none; border-left: 1px solid var(--border); }
+
+  .panel-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: #8b9ab0;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .ctrl-group { margin-bottom: 22px; }
+
+  .ctrl-label {
+    font-size: 12px;
+    color: #e0e6ef;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .ctrl-val {
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--accent2);
+    font-size: 13px;
+  }
+
+  input[type=range] {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 2px;
+    background: var(--border);
+    outline: none;
+    border-radius: 1px;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent2);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,212,255,0.5);
+    transition: box-shadow 0.2s;
+  }
+
+  input[type=range]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 14px rgba(0,212,255,0.8);
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 22px;
+  }
+
+  .toggle-label { font-size: 12px; color: #e0e6ef; letter-spacing: 1px; }
+
+  .toggle {
+    position: relative;
+    width: 40px;
+    height: 20px;
+  }
+
+  .toggle input { opacity: 0; width: 0; height: 0; }
+
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: 0.3s;
+  }
+
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    left: 3px;
+    top: 3px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: 0.3s;
+  }
+
+  .toggle input:checked + .toggle-slider { background: rgba(0,212,255,0.2); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(20px); background: var(--accent2); box-shadow: 0 0 8px rgba(0,212,255,0.6); }
+
+  .center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    gap: 20px;
+    position: relative;
+  }
+
+  #heatmap-wrap { position: relative; }
+
+  canvas#heatmap {
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  #colorbar-wrap {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  #colorbar { display: block; width: 100%; border-radius: 4px; }
+
+  #chart-wrap {
+    width: 100%;
+    max-width: 480px;
+    height: 180px;
+    position: relative;
+  }
+
+  canvas#linechart { width: 100% !important; height: 100% !important; image-rendering: auto; }
+
+  .metric-card {
+    background: rgba(0,212,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    margin-bottom: 12px;
+    transition: border-color 0.3s;
+  }
+
+  .metric-card:hover { border-color: rgba(0,212,255,0.3); }
+
+  .metric-val {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 26px;
+    color: #fff;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .metric-val span { font-size: 13px; color: #8b9ab0; }
+  .metric-lbl { font-size: 11px; color: #8b9ab0; letter-spacing: 1px; }
+
+  .equation-block {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .eq {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: #c0d8f0;
+    margin-bottom: 6px;
+    line-height: 1.6;
+  }
+
+  .eq-label { color: #8b9ab0; font-size: 10px; margin-bottom: 10px; letter-spacing: 1px; }
+
+  #progress-wrap {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  #progress-header {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: #8b9ab0;
+  }
+
+  #progress-header span { color: #ffffff; }
+
+  #progress-track {
+    width: 100%;
+    height: 6px;
+    background: #1c2333;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  #progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent2), #00a8cc);
+    border-radius: 3px;
+    transition: width 0.08s linear;
+    box-shadow: 0 0 8px rgba(0,212,255,0.4);
+  }
+
+  #pause-btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 7px 20px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+    border: 1px solid var(--accent2);
+    color: var(--accent2);
+  }
+  #pause-btn:hover { background: rgba(0,212,255,0.12); box-shadow: 0 0 10px rgba(0,212,255,0.3); }
+  #pause-btn.paused { border-color: var(--safe); color: var(--safe); }
+  #pause-btn.paused:hover { background: rgba(0,230,118,0.1); box-shadow: 0 0 10px rgba(0,230,118,0.3); }
+
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+
+  .preset-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: #8b9ab0;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    padding: 8px 6px;
+    cursor: pointer;
+    border-radius: 2px;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    text-align: center;
+  }
+
+  .preset-btn:hover { border-color: var(--accent2); color: #ffffff; background: rgba(0,212,255,0.05); }
+  .preset-btn.active { border-color: var(--accent2); background: rgba(0,212,255,0.1); color: #ffffff; }
+
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+  .critical-glow { filter: drop-shadow(0 0 6px rgba(232,33,74,0.8)); }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; height: auto; }
+    .panel { border-right: none; border-bottom: 1px solid var(--border); }
+    .panel:last-child { border-left: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">THERMO<span>CELL</span></div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#8b9ab0;letter-spacing:1px;margin-top:4px;">BATTERY THERMAL MANAGEMENT SIM · 4680 CELL PACK · FINITE DIFFERENCE METHOD</div>
+  </div>
+  <div class="author-block">
+    <div class="author-name">Evan McIntyre</div>
+    <div class="author-meta">MECHANICAL ENGINEERING · PORTFOLIO PROJECT</div>
+  </div>
+</header>
+
+<div id="status-bar">
+  <div class="status-item"><span class="status-label">PACK</span><span class="status-val" id="sb-pack">6×8 · 48 CELLS</span></div>
+  <div class="status-item"><span class="status-label">TIME</span><span class="status-val" id="sb-time">0 s</span></div>
+  <div class="status-item"><span class="status-label">HEAT GEN</span><span class="status-val" id="sb-heat">— W</span></div>
+  <div class="status-item"><span class="status-label">SPREAD</span><span class="status-val" id="sb-spread">— °C</span></div>
+  <div id="thermal-status" class="status-safe">NOMINAL</div>
+</div>
+
+<div class="main">
+
+  <!-- LEFT: controls -->
+  <div class="panel">
+    <div class="panel-title">// PARAMETERS</div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">C-RATE <span class="ctrl-val" id="lbl-crate">2.0 C</span></div>
+      <input type="range" id="sl-crate" min="0.5" max="4" step="0.5" value="2" oninput="onSlider()">
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">AMBIENT TEMP <span class="ctrl-val" id="lbl-tamb">25 °C</span></div>
+      <input type="range" id="sl-tamb" min="0" max="45" step="1" value="25" oninput="onSlider()">
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">COOLING POWER <span class="ctrl-val" id="lbl-cool">8.0 W/°C</span></div>
+      <input type="range" id="sl-cool" min="0" max="20" step="0.5" value="8" oninput="onSlider()">
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">CELL SPACING <span class="ctrl-val" id="lbl-space">3 mm</span></div>
+      <input type="range" id="sl-space" min="1" max="10" step="1" value="3" oninput="onSlider()">
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">DISCHARGE STEPS <span class="ctrl-val" id="lbl-steps">120</span></div>
+      <input type="range" id="sl-steps" min="40" max="200" step="10" value="120" oninput="onSlider()">
+    </div>
+
+    <div class="toggle-row">
+      <span class="toggle-label">LIQUID COOLING</span>
+      <label class="toggle">
+        <input type="checkbox" id="tog-cooling" checked onchange="onSlider()">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="panel-title">// PRESETS</div>
+    <div class="presets">
+      <button class="preset-btn active" onclick="loadPreset('baseline')">BASELINE</button>
+      <button class="preset-btn" onclick="loadPreset('nocool')">NO COOLING</button>
+      <button class="preset-btn" onclick="loadPreset('hotclimate')">HOT CLIMATE</button>
+      <button class="preset-btn" onclick="loadPreset('worst')">WORST CASE</button>
+    </div>
+  </div>
+
+  <!-- CENTER: visualization -->
+  <div class="center">
+    <div id="heatmap-wrap">
+      <canvas id="heatmap" width="480" height="360" aria-label="Battery pack heat map showing temperature distribution across 48 cells"></canvas>
+    </div>
+    <div id="progress-wrap">
+      <div id="progress-header">
+        <span>DISCHARGE PROGRESS</span>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span id="prog-label">0 s / 0 s · SoC <span id="prog-soc">100%</span></span>
+          <button id="pause-btn" onclick="togglePause()">⏸ PAUSE</button>
+        </div>
+      </div>
+      <div id="progress-track"><div id="progress-fill"></div></div>
+    </div>
+    <div id="colorbar-wrap">
+      <canvas id="colorbar" height="36" aria-label="Temperature colour scale from cold to hot"></canvas>
+    </div>
+    <div id="chart-wrap">
+      <canvas id="linechart" aria-label="Temperature over discharge cycle showing max, avg, and min cell temperatures"></canvas>
+    </div>
+  </div>
+
+  <!-- RIGHT: metrics -->
+  <div class="panel">
+    <div class="panel-title">// TELEMETRY</div>
+
+    <div class="metric-card">
+      <div class="metric-val" id="m-max">--<span> °C</span></div>
+      <div class="metric-lbl">MAX CELL TEMP</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-val" id="m-avg">--<span> °C</span></div>
+      <div class="metric-lbl">AVG CELL TEMP</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-val" id="m-min">--<span> °C</span></div>
+      <div class="metric-lbl">MIN CELL TEMP</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="metric-val" id="m-spread">--<span> °C</span></div>
+      <div class="metric-lbl">TEMP SPREAD</div>
+    </div>
+
+    <div class="equation-block">
+      <div class="eq-label">// ACTIVE PHYSICS</div>
+      <div class="eq">Q = I² × R_eff</div>
+      <div class="eq">ΔT = (Q / Cm) × dt</div>
+      <div class="eq">q = k(ΔT / Δx)</div>
+      <div class="eq">Q_cool = h(T − T∞)</div>
+    </div>
+
+    <div style="margin-top:20px;padding-top:24px;border-top:1px solid var(--border);">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#8b9ab0;letter-spacing:2px;margin-bottom:6px;">// AUTHORED BY</div>
+      <div style="font-family:'Barlow',sans-serif;font-weight:500;font-size:14px;color:#ffffff;">Evan McIntyre</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#8b9ab0;letter-spacing:1px;margin-top:3px;">MECHANICAL ENGINEERING</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#4a5568;letter-spacing:1px;margin-top:2px;">THERMOCELL v1.0 · 2026</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const ROWS = 6, COLS = 8;
+const CAPACITY = 5.0;
+const R_INT = 0.010;
+const THERMAL_MASS = 50.0;
+const K_BASE = 0.001;
+const TEMP_WARN = 45, TEMP_CRIT = 55;
+
+let lineChart = null;
+let animFrame = null;
+let currentStep = 0;
+let history = [];
+let simParams = {};
+
+function flattenT(T) {
+  const out = [];
+  for (let r = 0; r < T.length; r++)
+    for (let c = 0; c < T[r].length; c++)
+      out.push(T[r][c]);
+  return out;
+}
+
+function tempToColor(t, tmin, tmax) {
+  const range = tmax - tmin || 1;
+  const norm = Math.max(0, Math.min(1, (t - tmin) / range));
+  const stops = [
+    [10, 61, 107],
+    [0, 119, 182],
+    [245, 230, 66],
+    [245, 124, 0],
+    [192, 57, 43]
+  ];
+  const idx = norm * (stops.length - 1);
+  const lo = Math.floor(idx), hi = Math.min(stops.length - 1, lo + 1);
+  const f = idx - lo;
+  return stops[lo].map((c, i) => Math.round(c + f * (stops[hi][i] - c)));
+}
+
+function runSim(crate, tamb, coolingCoeff, spacing, steps, coolingOn) {
+  const I = crate * CAPACITY;
+  const K = K_BASE;
+  const DT = 10;
+  let T = Array.from({length: ROWS}, () => new Float64Array(COLS).fill(tamb));
+  const hist = [];
+
+  for (let s = 0; s < steps; s++) {
+    const soc = 1 - s / steps;
+    const Reff = R_INT * (1 + 0.4 * (1 - soc));
+    const Qgen = I * I * Reff;
+    const dT = Array.from({length: ROWS}, () => new Float64Array(COLS));
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        dT[r][c] += (Qgen / THERMAL_MASS) * DT;
+        for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+          const nr = r+dr, nc = c+dc;
+          if (nr>=0 && nr<ROWS && nc>=0 && nc<COLS) {
+            const qc = K * (T[nr][nc] - T[r][c]) / (spacing * 0.001);
+            dT[r][c] += (qc / THERMAL_MASS) * DT;
+          }
+        }
+        if (coolingOn && (r === 0 || r === ROWS-1)) {
+          const maxCool = Math.max(0, T[r][c] - tamb);
+          const rawCool = (coolingCoeff * (T[r][c] - tamb) / THERMAL_MASS) * DT;
+          dT[r][c] -= Math.min(rawCool, maxCool);
+        }
+      }
+    }
+
+    T = T.map((row, r) => row.map((v, c) => Math.max(tamb, v + dT[r][c])));
+    hist.push(T.map(row => Float64Array.from(row)));
+  }
+  return hist;
+}
+
+function drawColorbar(tmin, tmax) {
+  const canvas = document.getElementById('colorbar');
+  const dpr = window.devicePixelRatio || 2;
+  const displayW = document.getElementById('heatmap').width;
+  const displayH = 36;
+
+  canvas.width  = displayW * dpr;
+  canvas.height = displayH * dpr;
+  canvas.style.width  = displayW + 'px';
+  canvas.style.height = displayH + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const W = displayW, H = displayH;
+  const barH = 12, labelY = barH + 6;
+
+  const grad = ctx.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0,    '#0a3d6b');
+  grad.addColorStop(0.25, '#0077b6');
+  grad.addColorStop(0.5,  '#f5e642');
+  grad.addColorStop(0.75, '#f57c00');
+  grad.addColorStop(1,    '#c0392b');
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(0, 0, W, barH, 3);
+  ctx.fill();
+
+  ctx.font = 'bold 11px "Share Tech Mono", monospace';
+  ctx.textBaseline = 'top';
+  const ticks = 6;
+  for (let i = 0; i <= ticks; i++) {
+    const x    = (i / ticks) * W;
+    const temp = tmin + (i / ticks) * (tmax - tmin);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = i === 0 ? 'left' : i === ticks ? 'right' : 'center';
+    ctx.fillText(temp.toFixed(0) + '°C', x, labelY);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillRect(x - 0.5, barH, 1, 4);
+  }
+
+  const warnX = ((TEMP_WARN - tmin) / (tmax - tmin)) * W;
+  const critX = ((TEMP_CRIT - tmin) / (tmax - tmin)) * W;
+  if (warnX > 0 && warnX < W) { ctx.fillStyle = '#f5a623'; ctx.fillRect(warnX - 1, 0, 2, barH); }
+  if (critX > 0 && critX < W) { ctx.fillStyle = '#e8214a'; ctx.fillRect(critX - 1, 0, 2, barH); }
+}
+
+function drawHeatmap(frame) {
+  const canvas = document.getElementById('heatmap');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cw = W / COLS, ch = H / ROWS;
+  const T = history[frame];
+  const flat = flattenT(T);
+  const tmin = simParams.tamb - 2;
+  const tmax = Math.max(...flat, TEMP_CRIT + 2);
+
+  ctx.clearRect(0, 0, W, H);
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const t = T[r][c];
+      const [R,G,B] = tempToColor(t, simParams.tamb - 2, tmax);
+      const x = c*cw+3, y = r*ch+3, bw = cw-6, bh = ch-6;
+
+      ctx.fillStyle = `rgb(${R},${G},${B})`;
+      ctx.beginPath();
+      ctx.roundRect(x, y, bw, bh, 5);
+      ctx.fill();
+
+      if (t > TEMP_CRIT) {
+        ctx.shadowColor = 'rgba(232,33,74,0.8)';
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = 'rgba(255,50,50,0.15)';
+        ctx.beginPath();
+        ctx.roundRect(x, y, bw, bh, 5);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      ctx.fillStyle = t > (simParams.tamb + 20) ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.7)';
+      ctx.font = "500 11px 'Barlow', sans-serif";
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(t.toFixed(0) + '°', x + bw/2, y + bh/2);
+
+      if (simParams.coolingOn && (r === 0 || r === ROWS-1)) {
+        ctx.fillStyle = 'rgba(0,212,255,0.25)';
+        ctx.fillRect(x, r === 0 ? y : y+bh-3, bw, 3);
+      }
+    }
+  }
+
+  drawColorbar(tmin, tmax);
+}
+
+function updateMetrics(frame) {
+  const T = history[frame];
+  const flat = flattenT(T);
+  const maxT = Math.max(...flat);
+  const minT = Math.min(...flat);
+  const avgT = flat.reduce((a,b) => a+b, 0) / flat.length;
+  const spread = maxT - minT;
+  const I = simParams.crate * CAPACITY;
+  const Qgen = I * I * R_INT * ROWS * COLS;
+
+  document.getElementById('m-max').innerHTML = `${maxT.toFixed(1)}<span> °C</span>`;
+  document.getElementById('m-avg').innerHTML = `${avgT.toFixed(1)}<span> °C</span>`;
+  document.getElementById('m-min').innerHTML = `${minT.toFixed(1)}<span> °C</span>`;
+  document.getElementById('m-spread').innerHTML = `${spread.toFixed(1)}<span> °C</span>`;
+  document.getElementById('sb-time').textContent = `${frame * 10} s`;
+  document.getElementById('sb-heat').textContent = `${Qgen.toFixed(1)} W`;
+  document.getElementById('sb-spread').textContent = `${spread.toFixed(1)} °C`;
+
+  const totalTime = simParams.steps * 10;
+  const elapsed = frame * 10;
+  const pct = (elapsed / totalTime) * 100;
+  const soc = Math.max(0, 100 - pct).toFixed(0);
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('prog-label').innerHTML = `${elapsed} s / ${totalTime} s · SoC <span id="prog-soc">${soc}%</span>`;
+
+  const statusEl = document.getElementById('thermal-status');
+  if (maxT > TEMP_CRIT) {
+    statusEl.textContent = 'CRITICAL'; statusEl.className = 'status-critical';
+  } else if (maxT > TEMP_WARN) {
+    statusEl.textContent = 'WARNING'; statusEl.className = 'status-warn';
+  } else {
+    statusEl.textContent = 'NOMINAL'; statusEl.className = 'status-safe';
+  }
+}
+
+function buildChart() {
+  const steps = history.length;
+  const labels = history.map((_, i) => i * 10 + 's');
+  const maxT = history.map(T => Math.max(...flattenT(T)));
+  const avgT = history.map(T => { const f = flattenT(T); return f.reduce((a,b) => a+b, 0) / f.length; });
+  const minT = history.map(T => Math.min(...flattenT(T)));
+
+  if (lineChart) lineChart.destroy();
+  const ctx = document.getElementById('linechart').getContext('2d');
+  lineChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label:'Max', data:maxT, borderColor:'#e8214a', borderWidth:2, pointRadius:0, tension:0.4, fill:false },
+        { label:'Avg', data:avgT, borderColor:'#00d4ff', borderWidth:2, pointRadius:0, tension:0.4, fill:false },
+        { label:'Min', data:minT, borderColor:'#00e676', borderWidth:2, pointRadius:0, tension:0.4, fill:false },
+        { label:`Warn ${TEMP_WARN}°C`, data:Array(steps).fill(TEMP_WARN), borderColor:'rgba(245,166,35,0.7)', borderWidth:1.5, borderDash:[4,4], pointRadius:0, fill:false },
+        { label:`Crit ${TEMP_CRIT}°C`, data:Array(steps).fill(TEMP_CRIT), borderColor:'rgba(232,33,74,0.7)', borderWidth:1.5, borderDash:[4,4], pointRadius:0, fill:false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      devicePixelRatio: window.devicePixelRatio || 2,
+      plugins: {
+        legend: { display:true, labels:{ color:'#e0e6ef', font:{size:12, family:'Share Tech Mono'}, boxWidth:14, padding:12 } }
+      },
+      scales: {
+        x: { ticks:{ color:'#c0ccd8', maxTicksLimit:8, font:{size:11, family:'Share Tech Mono'} }, grid:{ color:'rgba(255,255,255,0.06)' } },
+        y: { ticks:{ color:'#c0ccd8', font:{size:11, family:'Share Tech Mono'} }, grid:{ color:'rgba(255,255,255,0.06)' } }
+      }
+    }
+  });
+}
+
+let isPaused = false;
+
+function togglePause() {
+  isPaused = !isPaused;
+  const btn = document.getElementById('pause-btn');
+  if (isPaused) {
+    btn.textContent = '▶ RESUME';
+    btn.classList.add('paused');
+    clearTimeout(animFrame);
+  } else {
+    btn.textContent = '⏸ PAUSE';
+    btn.classList.remove('paused');
+    animate();
+  }
+}
+
+function animate() {
+  if (currentStep >= history.length) { currentStep = 0; }
+  drawHeatmap(currentStep);
+  updateMetrics(currentStep);
+  currentStep++;
+  animFrame = setTimeout(animate, 80);
+}
+
+function rebuild() {
+  clearTimeout(animFrame);
+  currentStep = 0;
+  isPaused = false;
+  const btn = document.getElementById('pause-btn');
+  if (btn) { btn.textContent = '⏸ PAUSE'; btn.classList.remove('paused'); }
+
+  simParams = {
+    crate:     parseFloat(document.getElementById('sl-crate').value),
+    tamb:      parseFloat(document.getElementById('sl-tamb').value),
+    cool:      parseFloat(document.getElementById('sl-cool').value),
+    spacing:   parseFloat(document.getElementById('sl-space').value),
+    steps:     parseInt(document.getElementById('sl-steps').value),
+    coolingOn: document.getElementById('tog-cooling').checked,
+  };
+
+  document.getElementById('lbl-crate').textContent = simParams.crate.toFixed(1) + ' C';
+  document.getElementById('lbl-tamb').textContent  = simParams.tamb + ' °C';
+  document.getElementById('lbl-cool').textContent  = simParams.cool.toFixed(1) + ' W/°C';
+  document.getElementById('lbl-space').textContent = simParams.spacing + ' mm';
+  document.getElementById('lbl-steps').textContent = simParams.steps;
+
+  history = runSim(simParams.crate, simParams.tamb, simParams.cool, simParams.spacing, simParams.steps, simParams.coolingOn);
+  buildChart();
+  animate();
+}
+
+let debounce = null;
+function onSlider() {
+  clearTimeout(debounce);
+  debounce = setTimeout(rebuild, 120);
+}
+
+const PRESETS = {
+  baseline:   { crate:2.0, tamb:25, cool:8.0, space:3, steps:120, cooling:true },
+  nocool:     { crate:2.0, tamb:25, cool:8.0, space:3, steps:120, cooling:false },
+  hotclimate: { crate:2.0, tamb:40, cool:8.0, space:3, steps:120, cooling:true },
+  worst:      { crate:4.0, tamb:40, cool:0.0, space:1, steps:120, cooling:false },
+};
+
+function loadPreset(key) {
+  const p = PRESETS[key];
+  document.getElementById('sl-crate').value  = p.crate;
+  document.getElementById('sl-tamb').value   = p.tamb;
+  document.getElementById('sl-cool').value   = p.cool;
+  document.getElementById('sl-space').value  = p.space;
+  document.getElementById('sl-steps').value  = p.steps;
+  document.getElementById('tog-cooling').checked = p.cooling;
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  rebuild();
+}
+
+window.addEventListener('load', rebuild);
+</script>
+</body>
+</html>
